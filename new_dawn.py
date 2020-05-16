@@ -48,7 +48,7 @@ def main():
 
     epochs, ema_epochs = 10, 2
     lr_schedule = PiecewiseLinear([0, epochs / 5, epochs - ema_epochs],
-                                  [0, 1.0, 0.1])
+                                  [0, 0.05, 0.001])
     batch_size = 512
     train_transforms = [Crop(32, 32), FlipLR()]
 
@@ -58,12 +58,13 @@ def main():
                                device=device)
     Λ, V = eigens(patches(random_data))
 
-    loss = x_ent_loss
+    loss = mixup_loss
     random_batch = lambda batch_size: {
-        'input': torch.Tensor(np.random.rand(batch_size, 3, 32, 32)).cuda().
-        half(),
-        'target': torch.LongTensor(np.random.randint(0, 10, batch_size)).cuda(
-        )
+        'input': torch.Tensor(np.random.rand(batch_size, 3, 32, 32)).cuda(
+        ).half(),
+        'targets':
+        [torch.LongTensor(np.random.randint(0, 10, batch_size)).cuda()],
+        'weights': []
     }
     print('Warming up cudnn on random inputs')
     model = Network(
@@ -105,7 +106,7 @@ def main():
                                shuffle=True,
                                drop_last=True,
                                max_options=200,
-                               mixup_count=2)
+                               mixup_count=1)
     valid_batches = GPUBatches(batch_size=batch_size,
                                dataset=valid_set,
                                shuffle=False,

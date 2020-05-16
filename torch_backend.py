@@ -155,12 +155,14 @@ class GPUBatches():
                  shuffle=True,
                  drop_last=False,
                  max_options=None,
-                 mixup_count=1):
+                 mixup_count=1,
+                 alpha=1.):
         self.dataset = dataset
         self.transforms = transforms
         self.shuffle = shuffle
         self.max_options = max_options
         self.mixup_count = mixup_count
+        self.alpha = alpha
 
         N = len(dataset['data']) // mixup_count
 
@@ -192,39 +194,44 @@ class GPUBatches():
         N = self.N
 
         with torch.no_grad():
-            mixed_data, mixed_targets = data[:N], targets[:N]
+            mixed_data = data[:N]
+            targets_list = [targets[:N]]
+            weights_list = []
 
             for i in range(self.mixup_count - 1):
-                # need requires_grad?
-                weights = torch.rand(N,
-                                     1,
-                                     1,
-                                     1,
-                                     dtype=mixed_data.dtype,
-                                     device=device,
-                                     requires_grad=False)
-                other_weights = 1 - weights
-                print("w:", weights.shape)
-                print("ow:", other_weights.shape)
+                t_alpha = torch.tensor(self.alpha,
+                                       dtype=mixed_data.dtype,
+                                       device=device)
+                weights = torch.distributions.beta.Beta(t_alpha,
+                                                        t_alpha).sample(
+                                                            (N, 1, 1, 1))
                 start = N * (i + 1)
                 end = N * (i + 2)
                 next_data, next_targets = data[start:end], targets[start:end]
-                print("m:", mixed_data.shape)
-                print("n:", next_data.shape)
 
-                mixed_data = weights * mixed_data + other_weights * next_data
-                mixed_targets = (weights * mixed_targets +
-                                 other_weights * next_targets)
+                mixed_data = weights * mixed_data + (1 - weights) * next_data
+                targets_list.append(next_targets)
+                weights_list.append(weights)
 
             data = mixed_data
-            targets = mixed_targets
+
+        data_chunks = chunks(data, self.splits)
+
+        flip_dim = lambda x: zip(*x)
+        l_chunks = lambda xs: zip(*[chunks(x, self.splits) for x in xs])
+
+        targets_chunks = l_chunks(targets_list)
+
+        if self.mixup_count != 1:
+            weights_chunks = l_chunks(weights_list)
+        else:
+            weights_chunks = [[] for _ in self.splits]
 
         return ({
             'input': x.clone(),
-            'target': y
-        } for (
-            x,
-            y) in zip(chunks(data, self.splits), chunks(targets, self.splits)))
+            'targets': y,
+            'weights': w,
+        } for (x, y, w) in zip(data_chunks, targets_chunks, weights_chunks))
 
     def __len__(self):
         return len(self.splits) - 1
@@ -375,6 +382,30 @@ class LogSoftmax(namedtuple('LogSoftmax', ['dim'])):
 x_ent_loss = Network({
     'loss': (nn.CrossEntropyLoss(reduction='none'), ['logits', 'target']),
     'acc': (Correct(), ['logits', 'target'])
+})
+
+class MixupLoss(namedtuple('MixupLoss', [])):
+    def __init__(self):
+        super().__init__()
+
+        self.x_loss = nn.CrossEntropyLoss(reduction='none')
+
+    def __call__(self, classifier, targets, weights):
+        total = self.x_loss(classifier, targets[0])
+
+        for (target, weight) in zip(reversed(targets[1:]), reversed(weights)):
+            total = weight * total + (1 - weight) * self.x_loss(
+                classifier, target)
+
+        return total
+
+class MixupCorrect(namedtuple('MixupCorrect', [])):
+    def __call__(self, classifier, targets, weights):
+        return classifier.max(dim=1)[1] == targets[0] # TODO: maybe max?
+
+mixup_loss = Network({
+    'loss': (MixupLoss(), ['logits', 'targets', 'weights']),
+    'acc': (MixupCorrect(), ['logits', 'targets', 'weights'])
 })
 
 label_smoothing_loss = lambda alpha: Network({
