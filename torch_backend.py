@@ -384,6 +384,7 @@ x_ent_loss = Network({
     'acc': (Correct(), ['logits', 'target'])
 })
 
+
 class MixupLoss(namedtuple('MixupLoss', [])):
     def __init__(self):
         super().__init__()
@@ -393,15 +394,17 @@ class MixupLoss(namedtuple('MixupLoss', [])):
     def __call__(self, classifier, targets, weights):
         total = self.x_loss(classifier, targets[0])
 
-        for (target, weight) in zip(reversed(targets[1:]), reversed(weights)):
+        for (target, weight) in zip(targets[1:], weights):
             total = weight * total + (1 - weight) * self.x_loss(
                 classifier, target)
 
         return total
 
+
 class MixupCorrect(namedtuple('MixupCorrect', [])):
     def __call__(self, classifier, targets, weights):
-        return classifier.max(dim=1)[1] == targets[0] # TODO: maybe max?
+        return classifier.max(dim=1)[1] == targets[0]  # TODO: maybe max?
+
 
 mixup_loss = Network({
     'loss': (MixupLoss(), ['logits', 'targets', 'weights']),

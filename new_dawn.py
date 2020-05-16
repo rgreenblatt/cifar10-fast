@@ -48,7 +48,7 @@ def main():
 
     epochs, ema_epochs = 10, 2
     lr_schedule = PiecewiseLinear([0, epochs / 5, epochs - ema_epochs],
-                                  [0, 0.05, 0.001])
+                                  [0, 1.0, 0.1])
     batch_size = 512
     train_transforms = [Crop(32, 32), FlipLR()]
 
