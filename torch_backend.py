@@ -154,10 +154,25 @@ class GPUBatches():
                  dataset=None,
                  shuffle=True,
                  drop_last=False,
-                 max_options=None):
-        self.dataset, self.transforms, self.shuffle, self.max_options = dataset, transforms, shuffle, max_options
-        N = len(dataset['data'])
+                 max_options=None,
+                 mixup_count=1):
+        self.dataset = dataset
+        self.transforms = transforms
+        self.shuffle = shuffle
+        self.max_options = max_options
+        self.mixup_count = mixup_count
+
+        N = len(dataset['data']) // mixup_count
+
+        self.samples = N * mixup_count
+
+        self.dataset['data'] = self.dataset['data'][:self.samples]
+        self.dataset['targets'] = self.dataset['targets'][:self.samples]
+
         self.splits = list(range(0, N + 1, batch_size))
+
+        self.N = N
+
         if not drop_last and self.splits[-1] != N:
             self.splits.append(N)
 
@@ -169,9 +184,40 @@ class GPUBatches():
                                         transform,
                                         max_options=self.max_options,
                                         unshuffle=not self.shuffle)
+
         if self.shuffle:
             i = torch.randperm(len(data), device=device)
             data, targets = data[i], targets[i]
+
+        N = self.N
+
+        with torch.no_grad():
+            mixed_data, mixed_targets = data[:N], targets[:N]
+
+            for i in range(self.mixup_count - 1):
+                # need requires_grad?
+                weights = torch.rand(N,
+                                     1,
+                                     1,
+                                     1,
+                                     device=device,
+                                     requires_grad=False)
+                other_weights = 1 - weights
+                print("w:", weights.shape)
+                print("ow:", other_weights.shape)
+                start = N * (i + 1)
+                end = N * (i + 2)
+                next_data, next_targets = data[start:end], targets[start:end]
+                print("m:", mixed_data.shape)
+                print("n:", next_data.shape)
+
+                mixed_data = weights * mixed_data + other_weights * next_data
+                mixed_targets = (weights * mixed_targets +
+                                 other_weights * next_targets)
+
+            data = mixed_data
+            targets = mixed_targets
+
         return ({
             'input': x.clone(),
             'target': y

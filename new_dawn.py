@@ -58,7 +58,7 @@ def main():
                                device=device)
     Λ, V = eigens(patches(random_data))
 
-    loss = label_smoothing_loss(0.2)
+    loss = x_ent_loss
     random_batch = lambda batch_size: {
         'input': torch.Tensor(np.random.rand(batch_size, 3, 32, 32)).cuda().
         half(),
@@ -104,7 +104,8 @@ def main():
                                dataset=train_set,
                                shuffle=True,
                                drop_last=True,
-                               max_options=200)
+                               max_options=200,
+                               mixup_count=2)
     valid_batches = GPUBatches(batch_size=batch_size,
                                dataset=valid_set,
                                shuffle=False,
