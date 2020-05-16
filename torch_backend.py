@@ -200,6 +200,7 @@ class GPUBatches():
                                      1,
                                      1,
                                      1,
+                                     dtype=mixed_data.dtype,
                                      device=device,
                                      requires_grad=False)
                 other_weights = 1 - weights
