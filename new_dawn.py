@@ -21,7 +21,12 @@ class Activation(nn.Module):
         self.relu = relu()
 
     def forward(self, x):
-        return self.relu(x)
+        chunk_by = 2
+
+        count_chan = x.size(1) // chunk_by
+        chunks = [x[count_chan*i:count_chan*(i+1)] for i in range(chunk_by)]
+
+        return self.relu(chunks[0]) * torch.sigmoid(chunks[1])
 
 
 def conv_bn(c_in, c_out, pool=None):
@@ -91,7 +96,7 @@ def main():
                 weight=1 / 16,
                 conv_bn=conv_bn,
                 prep=partial(whitening_block, Λ=Λ, V=V),
-            act_multiplier=1)).to(device).half()
+            act_multiplier=0.5)).to(device).half()
 
     model = make_model()
 
