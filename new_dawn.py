@@ -27,8 +27,7 @@ class Activation(nn.Module):
         chunks = [x[:,count_chan*i:count_chan*(i+1)] for i in range(chunk_by)]
 
         return torch.cat((self.relu(chunks[0]) * torch.sigmoid(chunks[1]),
-                          self.relu(chunks[1]) * torch.sigmoid(chunks[0]),
-                          torch.sigmoid(x), self.relu(x)),
+                          self.relu(chunks[1]) * torch.sigmoid(chunks[0])),
                          dim=1)
 
 
@@ -99,7 +98,7 @@ def main():
                 weight=1 / 16,
                 conv_bn=conv_bn,
                 prep=partial(whitening_block, Λ=Λ, V=V),
-            act_multiplier=3)).to(device).half()
+            act_multiplier=1)).to(device).half()
 
     model = make_model()
 
