@@ -24,7 +24,7 @@ class Activation(nn.Module):
         chunk_by = 2
 
         count_chan = x.size(1) // chunk_by
-        chunks = [x[count_chan*i:count_chan*(i+1)] for i in range(chunk_by)]
+        chunks = [x[:,count_chan*i:count_chan*(i+1)] for i in range(chunk_by)]
 
         return self.relu(chunks[0]) * torch.sigmoid(chunks[1])
 
