@@ -26,7 +26,10 @@ class Activation(nn.Module):
         count_chan = x.size(1) // chunk_by
         chunks = [x[:,count_chan*i:count_chan*(i+1)] for i in range(chunk_by)]
 
-        return self.relu(chunks[0]) * torch.tanh(chunks[1])
+        return torch.cat((self.relu(chunks[0]) * torch.sigmoid(chunks[1]),
+                          self.relu(chunks[1]) * torch.sigmoid(chunks[0]),
+                          torch.sigmoid(x), self.relu(x)),
+                         dim=1)
 
 
 def conv_bn(c_in, c_out, pool=None):
@@ -96,7 +99,7 @@ def main():
                 weight=1 / 16,
                 conv_bn=conv_bn,
                 prep=partial(whitening_block, Λ=Λ, V=V),
-            act_multiplier=0.5)).to(device).half()
+            act_multiplier=3)).to(device).half()
 
     model = make_model()
 
