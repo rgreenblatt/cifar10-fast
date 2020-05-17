@@ -26,7 +26,7 @@ class Activation(nn.Module):
         count_chan = x.size(1) // chunk_by
         chunks = [x[:,count_chan*i:count_chan*(i+1)] for i in range(chunk_by)]
 
-        return self.relu(chunks[0]) * torch.sigmoid(chunks[1])
+        return self.relu(chunks[0]) * torch.tanh(chunks[1])
 
 
 def conv_bn(c_in, c_out, pool=None):
