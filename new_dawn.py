@@ -58,11 +58,11 @@ def main():
     print('Downloading datasets')
     dataset = map_nested(torch.tensor, cifar10(args.data_dir))
 
-    epochs, ema_epochs = 10, 2
-    lr_schedule = PiecewiseLinear([0, epochs / 5, epochs - ema_epochs],
-                                  [0, 1.0, 0.1])
+    epochs, ema_epochs = 100, 20
+    lr_schedule = PiecewiseLinear([0, 20, 80],
+                                  [0.1, 0.3, 0.03])
     batch_size = 512
-    train_transforms = [Crop(32, 32), FlipLR()]
+    train_transforms = [Crop(32, 32), FlipLR(), Cutout(12, 12)]
 
     print('Warming up torch')
     random_data = torch.tensor(np.random.randn(1000, 3, 32,
