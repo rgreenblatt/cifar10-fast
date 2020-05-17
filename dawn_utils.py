@@ -15,11 +15,11 @@ def conv_bn_default(c_in, c_out, pool=None):
     return block
 
 
-def residual(c, conv_bn, **kw):
+def residual(c, conv_bn, act_multiplier, use_se, **kw):
     return {
         'in': Identity(),
-        'res1': conv_bn(c, c, **kw),
-        'res2': conv_bn(c, c, **kw),
+        'res1': conv_bn(int(c * act_multiplier), c, **kw),
+        'res2': conv_bn(int(c * act_multiplier), c, **kw),
         'add': (Add(), ['in', 'res2/relu']),
     }
 
@@ -30,7 +30,9 @@ def net(channels=None,
         extra_layers=(),
         res_layers=('layer1', 'layer3'),
         conv_bn=conv_bn_default,
-        prep=conv_bn_default):
+        prep=conv_bn_default,
+        act_multiplier=1,
+        use_se=True):
     channels = channels or {
         'prep': 64,
         'layer1': 128,
@@ -39,19 +41,35 @@ def net(channels=None,
     }
     n = {
         'input': (None, []),
-        'prep': prep(3, channels['prep']),
-        'layer1': conv_bn(channels['prep'], channels['layer1'], pool=pool),
-        'layer2': conv_bn(channels['layer1'], channels['layer2'], pool=pool),
-        'layer3': conv_bn(channels['layer2'], channels['layer3'], pool=pool),
-        'pool': nn.MaxPool2d(4),
-        'flatten': Flatten(),
-        'linear': nn.Linear(channels['layer3'], 10, bias=False),
-        'logits': Mul(weight),
+        'prep':
+        prep(3, channels['prep']),
+        'layer1':
+        conv_bn(int(channels['prep'] * act_multiplier),
+                channels['layer1'],
+                pool=pool),
+        'layer2':
+        conv_bn(int(channels['layer1'] * act_multiplier),
+                channels['layer2'],
+                pool=pool),
+        'layer3':
+        conv_bn(int(channels['layer2'] * act_multiplier),
+                channels['layer3'],
+                pool=pool),
+        'pool':
+        nn.MaxPool2d(4),
+        'flatten':
+        Flatten(),
+        'linear':
+        nn.Linear(int(channels['layer3'] * act_multiplier), 10, bias=False),
+        'logits':
+        Mul(weight),
     }
     for layer in res_layers:
-        n[layer]['residual'] = residual(channels[layer], conv_bn)
+        n[layer]['residual'] = residual(channels[layer], conv_bn,
+                                        act_multiplier, use_se)
     for layer in extra_layers:
-        n[layer]['extra'] = conv_bn(channels[layer], channels[layer])
+        n[layer]['extra'] = conv_bn(int(channels[layer] * act_multiplier),
+                                    channels[layer])
     return n
 
 

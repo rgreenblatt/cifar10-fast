@@ -1,8 +1,11 @@
+import argparse
+import os.path
+
+import pytorch_model_summary as pms
+
 from core import *
 from torch_backend import *
 from dawn_utils import net, tsv
-import argparse
-import os.path
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_dir', type=str, default='./data')
@@ -10,6 +13,15 @@ parser.add_argument('--log_dir', type=str, default='.')
 
 batch_norm = partial(GhostBatchNorm, num_splits=16, weight_freeze=True)
 relu = partial(nn.CELU, alpha=0.3)
+
+class Activation(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.relu = relu()
+
+    def forward(self, x):
+        return self.relu(x)
 
 
 def conv_bn(c_in, c_out, pool=None):
@@ -19,7 +31,7 @@ def conv_bn(c_in, c_out, pool=None):
         'bn':
         batch_norm(c_out),
         'relu':
-        relu(),
+        Activation(),
     }
     if pool:
         block = {
@@ -36,7 +48,7 @@ def whitening_block(c_in, c_out, Λ=None, V=None, eps=1e-2):
         'whiten': whitening_filter(Λ, V, eps),
         'conv': nn.Conv2d(27, c_out, kernel_size=(1, 1), bias=False),
         'norm': batch_norm(c_out),
-        'act': relu(),
+        'act': Activation(),
     }
 
 
@@ -67,10 +79,22 @@ def main():
         'weights': []
     }
     print('Warming up cudnn on random inputs')
-    model = Network(
-        net(weight=1 / 16,
-            conv_bn=conv_bn,
-            prep=partial(whitening_block, Λ=Λ, V=V))).to(device).half()
+
+    def make_model():
+        return Network(
+            net(channels={
+                'prep': 64,
+                'layer1': 128,
+                'layer2': 256,
+                'layer3': 512
+            },
+                weight=1 / 16,
+                conv_bn=conv_bn,
+                prep=partial(whitening_block, Λ=Λ, V=V),
+            act_multiplier=1)).to(device).half()
+
+    model = make_model()
+
     for size in [batch_size, len(dataset['valid']['targets']) % batch_size]:
         warmup_cudnn(model, loss, random_batch(size))
 
@@ -95,10 +119,11 @@ def main():
     Λ, V = eigens(patches(
         train_set['data'][:10000, :, 4:-4,
                           4:-4]))  #center crop to remove padding
-    model = Network(
-        net(weight=1 / 16,
-            conv_bn=conv_bn,
-            prep=partial(whitening_block, Λ=Λ, V=V))).to(device).half()
+    mode = make_model()
+
+    print(
+        pms.summary(
+            model, {'input': torch.zeros(1, 3, 32, 32, device=device).half()}))
 
     train_batches = GPUBatches(batch_size=batch_size,
                                transforms=train_transforms,
@@ -159,4 +184,5 @@ def main():
         f.write(tsv(logs.log))
 
 
-main()
+if __name__ == "__main__":
+    main()

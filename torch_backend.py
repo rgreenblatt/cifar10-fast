@@ -297,7 +297,6 @@ class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), x.size(1))
 
-
 class Concat(nn.Module):
     def forward(self, *xs):
         return torch.cat(xs, 1)
