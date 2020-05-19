@@ -14,23 +14,6 @@ parser.add_argument('--log_dir', type=str, default='.')
 batch_norm = partial(GhostBatchNorm, num_splits=16, weight_freeze=True)
 relu = partial(nn.CELU, alpha=0.3)
 
-class Activation(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        self.relu = relu()
-
-    def forward(self, x):
-        chunk_by = 2
-
-        count_chan = x.size(1) // chunk_by
-        chunks = [x[:,count_chan*i:count_chan*(i+1)] for i in range(chunk_by)]
-
-        return torch.cat((self.relu(chunks[0]) * torch.sigmoid(chunks[1]),
-                          self.relu(chunks[1]) * torch.sigmoid(chunks[0])),
-                         dim=1)
-
-
 def conv_bn(c_in, c_out, pool=None):
     block = {
         'conv':
@@ -38,7 +21,7 @@ def conv_bn(c_in, c_out, pool=None):
         'bn':
         batch_norm(c_out),
         'relu':
-        Activation(),
+        relu(),
     }
     if pool:
         block = {
@@ -52,10 +35,10 @@ def conv_bn(c_in, c_out, pool=None):
 
 def whitening_block(c_in, c_out, Λ=None, V=None, eps=1e-2):
     return {
-        'whiten': whitening_filter(Λ, V, eps),
+        'whiten': whitening_filter(c_in, Λ, V, eps),
         'conv': nn.Conv2d(27, c_out, kernel_size=(1, 1), bias=False),
         'norm': batch_norm(c_out),
-        'act': Activation(),
+        'act': relu(),
     }
 
 
@@ -71,16 +54,19 @@ def main():
     batch_size = 512
     train_transforms = [Crop(32, 32), FlipLR(), Cutout(12, 12)]
 
+    noise_channels = 1
+
     print('Warming up torch')
-    random_data = torch.tensor(np.random.randn(1000, 3, 32,
+    random_data = torch.tensor(np.random.randn(1000, 3 + noise_channels, 32,
                                                32).astype(np.float16),
                                device=device)
     Λ, V = eigens(patches(random_data))
 
     loss = mixup_loss
     random_batch = lambda batch_size: {
-        'input': torch.Tensor(np.random.rand(batch_size, 3, 32, 32)).cuda(
-        ).half(),
+        'input':
+        torch.Tensor(np.random.rand(batch_size, 3 + noise_channels, 32, 32)
+                     ).cuda().half(),
         'targets':
         [torch.LongTensor(np.random.randint(0, 10, batch_size)).cuda()],
         'weights': []
@@ -97,8 +83,9 @@ def main():
             },
                 weight=1 / 16,
                 conv_bn=conv_bn,
-                prep=partial(whitening_block, Λ=Λ, V=V),
-            act_multiplier=1)).to(device).half()
+                # prep=partial(whitening_block, Λ=Λ, V=V),
+                act_multiplier=1,
+                inp_chan=noise_channels + 3)).to(device).half()
 
     model = make_model()
 
@@ -130,7 +117,7 @@ def main():
 
     print(
         pms.summary(
-            model, {'input': torch.zeros(1, 3, 32, 32, device=device).half()}))
+            model, {'input': torch.zeros(1, 4, 32, 32, device=device).half()}))
 
     train_batches = GPUBatches(batch_size=batch_size,
                                transforms=train_transforms,
@@ -138,11 +125,13 @@ def main():
                                shuffle=True,
                                drop_last=True,
                                max_options=200,
-                               mixup_count=1)
+                               mixup_count=1,
+                               noise_channels=noise_channels)
     valid_batches = GPUBatches(batch_size=batch_size,
                                dataset=valid_set,
                                shuffle=False,
-                               drop_last=False)
+                               drop_last=False,
+                               noise_channels=noise_channels)
     is_bias = group_by_key(
         ('bias' in k, v) for k, v in trainable_params(model).items())
     opts = [

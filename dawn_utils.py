@@ -15,7 +15,7 @@ def conv_bn_default(c_in, c_out, pool=None):
     return block
 
 
-def residual(c, conv_bn, act_multiplier, use_se, **kw):
+def residual(c, conv_bn, act_multiplier, **kw):
     return {
         'in': Identity(),
         'res1': conv_bn(int(c * act_multiplier), c, **kw),
@@ -32,7 +32,7 @@ def net(channels=None,
         conv_bn=conv_bn_default,
         prep=conv_bn_default,
         act_multiplier=1,
-        use_se=True):
+        inp_chan=3):
     channels = channels or {
         'prep': 64,
         'layer1': 128,
@@ -42,7 +42,7 @@ def net(channels=None,
     n = {
         'input': (None, []),
         'prep':
-        prep(3, channels['prep']),
+        prep(inp_chan, channels['prep']),
         'layer1':
         conv_bn(int(channels['prep'] * act_multiplier),
                 channels['layer1'],
@@ -66,7 +66,7 @@ def net(channels=None,
     }
     for layer in res_layers:
         n[layer]['residual'] = residual(channels[layer], conv_bn,
-                                        act_multiplier, use_se)
+                                        act_multiplier)
     for layer in extra_layers:
         n[layer]['extra'] = conv_bn(int(channels[layer] * act_multiplier),
                                     channels[layer])

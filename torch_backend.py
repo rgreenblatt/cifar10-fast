@@ -156,12 +156,14 @@ class GPUBatches():
                  drop_last=False,
                  max_options=None,
                  mixup_count=1,
+                 noise_channels=0,
                  alpha=1.):
         self.dataset = dataset
         self.transforms = transforms
         self.shuffle = shuffle
         self.max_options = max_options
         self.mixup_count = mixup_count
+        self.noise_channels = noise_channels
         self.alpha = alpha
 
         N = len(dataset['data']) // mixup_count
@@ -169,6 +171,17 @@ class GPUBatches():
         self.samples = N * mixup_count
 
         self.dataset['data'] = self.dataset['data'][:self.samples]
+
+        noise_size = [*self.dataset['data'].size()]
+        noise_size[1] = noise_channels
+
+        noise_channels = torch.randn(*noise_size,
+                                     dtype=self.dataset['data'].dtype,
+                                     device=device)
+
+        self.dataset['data'] = torch.cat(
+            (self.dataset['data'], noise_channels), dim=1)
+
         self.dataset['targets'] = self.dataset['targets'][:self.samples]
 
         self.splits = list(range(0, N + 1, batch_size))
@@ -667,8 +680,8 @@ def eigens(patches):
     return Λ.flip(0), V.t().reshape(c * h * w, c, h, w).flip(0)
 
 
-def whitening_filter(Λ, V, eps=1e-2):
-    filt = nn.Conv2d(3, 27, kernel_size=(3, 3), padding=(1, 1), bias=False)
+def whitening_filter(c_in, Λ, V, eps=1e-2):
+    filt = nn.Conv2d(c_in, 27, kernel_size=(3, 3), padding=(1, 1), bias=False)
     filt.weight.data = (V / torch.sqrt(Λ + eps)[:, None, None, None])
     filt.weight.requires_grad = False
     return filt
